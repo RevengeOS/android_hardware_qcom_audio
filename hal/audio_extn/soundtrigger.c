@@ -75,15 +75,6 @@ get_sound_trigger_info(int capture_handle)
     return NULL;
 }
 
-static void stdev_snd_mon_cb(void * stream __unused, struct str_parms * parms)
-{
-    if (!parms)
-        return;
-
-    audio_extn_sound_trigger_set_parameters(NULL, parms);
-    return;
-}
-
 int audio_hw_call_back(sound_trigger_event_type_t event,
                        sound_trigger_event_info_t* config)
 {
