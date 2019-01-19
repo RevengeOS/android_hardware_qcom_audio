@@ -2000,43 +2000,6 @@ static bool output_drives_call(struct audio_device *adev, struct stream_out *out
     return out == adev->primary_output || out == adev->voice_tx_output;
 }
 
-// note: this call is safe only if the stream_cb is
-// removed first in close_output_stream (as is done now).
-static void out_snd_mon_cb(void * stream, struct str_parms * parms)
-{
-    if (!stream || !parms)
-        return;
-
-    struct stream_out *out = (struct stream_out *)stream;
-    struct audio_device *adev = out->dev;
-
-    card_status_t status;
-    int card;
-    if (parse_snd_card_status(parms, &card, &status) < 0)
-        return;
-
-    pthread_mutex_lock(&adev->lock);
-    bool valid_cb = (card == adev->snd_card);
-    pthread_mutex_unlock(&adev->lock);
-
-    if (!valid_cb)
-        return;
-
-    lock_output_stream(out);
-    if (out->card_status != status)
-        out->card_status = status;
-    pthread_mutex_unlock(&out->lock);
-
-    ALOGI("out_snd_mon_cb for card %d usecase %s, status %s", card,
-          use_case_table[out->usecase],
-          status == CARD_STATUS_OFFLINE ? "offline" : "online");
-
-    if (status == CARD_STATUS_OFFLINE)
-        out_on_error(stream);
-
-    return;
-}
-
 static int out_set_parameters(struct audio_stream *stream, const char *kvpairs)
 {
     struct stream_out *out = (struct stream_out *)stream;
@@ -2768,43 +2731,6 @@ static int in_dump(const struct audio_stream *stream __unused,
                    int fd __unused)
 {
     return 0;
-}
-
-static void in_snd_mon_cb(void * stream, struct str_parms * parms)
-{
-    if (!stream || !parms)
-        return;
-
-    struct stream_in *in = (struct stream_in *)stream;
-    struct audio_device *adev = in->dev;
-
-    card_status_t status;
-    int card;
-    if (parse_snd_card_status(parms, &card, &status) < 0)
-        return;
-
-    pthread_mutex_lock(&adev->lock);
-    bool valid_cb = (card == adev->snd_card);
-    pthread_mutex_unlock(&adev->lock);
-
-    if (!valid_cb)
-        return;
-
-    lock_input_stream(in);
-    if (in->card_status != status)
-        in->card_status = status;
-    pthread_mutex_unlock(&in->lock);
-
-    ALOGW("in_snd_mon_cb for card %d usecase %s, status %s", card,
-          use_case_table[in->usecase],
-          status == CARD_STATUS_OFFLINE ? "offline" : "online");
-
-    // a better solution would be to report error back to AF and let
-    // it put the stream to standby
-    if (status == CARD_STATUS_OFFLINE)
-        in_standby(&in->stream.common);
-
-    return;
 }
 
 static int in_set_parameters(struct audio_stream *stream, const char *kvpairs)
@@ -3947,40 +3873,6 @@ static int period_size_is_plausible_for_low_latency(int period_size)
     default:
         return 0;
     }
-}
-
-static void adev_snd_mon_cb(void *cookie, struct str_parms *parms)
-{
-    bool is_snd_card_status = false;
-    bool is_ext_device_status = false;
-    char value[32];
-    int card = -1;
-    card_status_t status;
-
-    if (cookie != adev || !parms)
-        return;
-
-    if (!parse_snd_card_status(parms, &card, &status)) {
-        is_snd_card_status = true;
-    } else if (0 < str_parms_get_str(parms, "ext_audio_device", value, sizeof(value))) {
-        is_ext_device_status = true;
-    } else {
-        // not a valid event
-        return;
-    }
-
-    pthread_mutex_lock(&adev->lock);
-    if (card == adev->snd_card || is_ext_device_status) {
-        if (is_snd_card_status && adev->card_status != status) {
-            adev->card_status = status;
-            platform_snd_card_update(adev->platform, status);
-            audio_extn_fm_set_parameters(adev, parms);
-        } else if (is_ext_device_status) {
-            platform_set_parameters(adev->platform, parms);
-        }
-    }
-    pthread_mutex_unlock(&adev->lock);
-    return;
 }
 
 static int adev_open(const hw_module_t *module, const char *name,
