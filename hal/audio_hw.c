@@ -268,27 +268,6 @@ static struct audio_device *adev = NULL;
 static pthread_mutex_t adev_init_lock;
 static unsigned int audio_device_ref_count;
 
-static int parse_snd_card_status(struct str_parms *parms, int *card,
-                                 card_status_t *status)
-{
-    char value[32]={0};
-    char state[32]={0};
-
-    int  ret = str_parms_get_str(parms, "SND_CARD_STATUS", value, sizeof(value));
-    if (ret < 0)
-        return -1;
-
-    // sscanf should be okay as value is of max length 32.
-    // same as sizeof state.
-    if (sscanf(value, "%d,%s", card, state) < 2)
-        return -1;
-
-    *status = !strcmp(state, "ONLINE") ? CARD_STATUS_ONLINE :
-                                         CARD_STATUS_OFFLINE;
-    return 0;
-}
-
-
 static int check_and_set_gapless_mode(struct audio_device *adev, bool enable_gapless)
 {
     bool gapless_enabled = false;
