@@ -1979,6 +1979,43 @@ static bool output_drives_call(struct audio_device *adev, struct stream_out *out
     return out == adev->primary_output || out == adev->voice_tx_output;
 }
 
+// note: this call is safe only if the stream_cb is
+// removed first in close_output_stream (as is done now).
+static void out_snd_mon_cb(void * stream, struct str_parms * parms)
+{
+    if (!stream || !parms)
+        return;
+
+    struct stream_out *out = (struct stream_out *)stream;
+    struct audio_device *adev = out->dev;
+
+    card_status_t status;
+    int card;
+    if (parse_snd_card_status(parms, &card, &status) < 0)
+        return;
+
+    pthread_mutex_lock(&adev->lock);
+    bool valid_cb = (card == adev->snd_card);
+    pthread_mutex_unlock(&adev->lock);
+
+    if (!valid_cb)
+        return;
+
+    lock_output_stream(out);
+    if (out->card_status != status)
+        out->card_status = status;
+    pthread_mutex_unlock(&out->lock);
+
+    ALOGI("out_snd_mon_cb for card %d usecase %s, status %s", card,
+          use_case_table[out->usecase],
+          status == CARD_STATUS_OFFLINE ? "offline" : "online");
+
+    if (status == CARD_STATUS_OFFLINE)
+        out_on_error(stream);
+
+    return;
+}
+
 static int out_set_parameters(struct audio_stream *stream, const char *kvpairs)
 {
     struct stream_out *out = (struct stream_out *)stream;
